@@ -13,7 +13,9 @@ import type {
   LobbyState,
   MatchEntry,
   ParticipantRef,
+  PendingChallenge,
   PlayerStatus,
+  RejectReason,
   SeatKey,
 } from "./lobby.types";
 import { reexportMatchEvent } from "./lobby.types";
@@ -49,8 +51,30 @@ function participantOfSeat(entry: MatchEntry, seat: SeatKey): ParticipantRef {
   return seat === "seatA" ? entry.seatA : entry.seatB;
 }
 
-function rejected(state: LobbyState, reason: string): LobbyResult {
+/** Both seats paired with their key — the shape every "touch both participants" call site
+ * (room membership, matchOfPlayer bookkeeping) actually wants. Takes just the two seats
+ * (not a full MatchEntry) so callers with only e.g. a MATCH_STARTED event's seatA/seatB
+ * don't need to fake up an entry. */
+export function matchParticipants(
+  seats: Pick<MatchEntry, "seatA" | "seatB">,
+): [SeatKey, ParticipantRef][] {
+  return [
+    ["seatA", seats.seatA],
+    ["seatB", seats.seatB],
+  ];
+}
+
+function rejected(state: LobbyState, reason: RejectReason): LobbyResult {
   return { state, events: [{ type: "ACTION_REJECTED", reason }] };
+}
+
+/** Removes a resolved challenge (accepted/declined/cancelled/expired) from both indices. */
+function removeChallenge(state: LobbyState, challenge: PendingChallenge): LobbyState {
+  return {
+    ...state,
+    challenges: omit(state.challenges, challenge.id),
+    challengeOfPlayer: omit(omit(state.challengeOfPlayer, challenge.fromPlayerId), challenge.toPlayerId),
+  };
 }
 
 export function handleAction(
@@ -67,9 +91,9 @@ export function handleAction(
     case "SEND_CHALLENGE":
       return sendChallenge(state, action.challengeId, action.fromPlayerId, action.toPlayerId, now);
     case "ACCEPT_CHALLENGE":
-      return acceptChallenge(state, action.challengeId, action.matchId, rng);
+      return acceptChallenge(state, action.challengeId, action.matchId, action.playerId, rng);
     case "DECLINE_CHALLENGE":
-      return declineChallenge(state, action.challengeId);
+      return declineChallenge(state, action.challengeId, action.playerId);
     case "CHALLENGE_TIMEOUT":
       return challengeTimeout(state, action.challengeId);
     case "START_BOT_MATCH":
@@ -102,19 +126,22 @@ function leaveLobby(state: LobbyState, playerId: string): LobbyResult {
   if (state.matchOfPlayer[playerId]) return rejected(state, "in-match");
 
   const events: LobbyEvent[] = [];
-  let { challenges, challengeOfPlayer } = state;
-  const challengeId = challengeOfPlayer[playerId];
+  let next = state;
+  const challengeId = state.challengeOfPlayer[playerId];
   if (challengeId) {
-    const challenge = challenges[challengeId];
-    challenges = omit(challenges, challengeId);
-    challengeOfPlayer = omit(omit(challengeOfPlayer, challenge.fromPlayerId), challenge.toPlayerId);
-    events.push({ type: "CHALLENGE_DECLINED", challengeId });
+    const challenge = state.challenges[challengeId];
+    next = removeChallenge(next, challenge);
+    events.push({
+      type: "CHALLENGE_CANCELLED",
+      challenge,
+      reason: challenge.fromPlayerId === playerId ? "challenger-left" : "target-left",
+    });
   }
 
-  const players = omit(state.players, playerId);
+  next = { ...next, players: omit(next.players, playerId) };
   events.push({ type: "PLAYER_LEFT", playerId });
 
-  return { state: { ...state, players, challenges, challengeOfPlayer }, events };
+  return { state: next, events };
 }
 
 function sendChallenge(
@@ -152,53 +179,48 @@ function acceptChallenge(
   state: LobbyState,
   challengeId: string,
   matchId: string,
+  playerId: string,
   rng: () => number,
 ): LobbyResult {
   const challenge = state.challenges[challengeId];
   if (!challenge) return rejected(state, "challenge-not-found");
+  // Server-authoritative: only the invited player can accept — CONTEXT.md's Challenge
+  // lifecycle assigns accept/decline to whoever received it, never the sender.
+  if (challenge.toPlayerId !== playerId) return rejected(state, "not-the-target");
 
   const { entry, state: withMatch } = startMatch(
-    state,
+    removeChallenge(state, challenge),
     matchId,
     { type: "player", playerId: challenge.fromPlayerId },
     { type: "player", playerId: challenge.toPlayerId },
     rng,
   );
 
-  const challenges = omit(withMatch.challenges, challengeId);
-  const challengeOfPlayer = omit(
-    omit(withMatch.challengeOfPlayer, challenge.fromPlayerId),
-    challenge.toPlayerId,
-  );
-
   return {
-    state: { ...withMatch, challenges, challengeOfPlayer },
+    state: withMatch,
     events: [
-      { type: "CHALLENGE_ACCEPTED", challengeId, matchId },
+      { type: "CHALLENGE_ACCEPTED", challenge, matchId },
       { type: "MATCH_STARTED", matchId, seatA: entry.seatA, seatB: entry.seatB },
     ],
   };
 }
 
-function declineChallenge(state: LobbyState, challengeId: string): LobbyResult {
+function declineChallenge(state: LobbyState, challengeId: string, playerId: string): LobbyResult {
   const challenge = state.challenges[challengeId];
   if (!challenge) return rejected(state, "challenge-not-found");
-  const challenges = omit(state.challenges, challengeId);
-  const challengeOfPlayer = omit(omit(state.challengeOfPlayer, challenge.fromPlayerId), challenge.toPlayerId);
+  if (challenge.toPlayerId !== playerId) return rejected(state, "not-the-target");
   return {
-    state: { ...state, challenges, challengeOfPlayer },
-    events: [{ type: "CHALLENGE_DECLINED", challengeId }],
+    state: removeChallenge(state, challenge),
+    events: [{ type: "CHALLENGE_DECLINED", challenge }],
   };
 }
 
 function challengeTimeout(state: LobbyState, challengeId: string): LobbyResult {
   const challenge = state.challenges[challengeId];
   if (!challenge) return { state, events: [] }; // already resolved by an accept/decline race
-  const challenges = omit(state.challenges, challengeId);
-  const challengeOfPlayer = omit(omit(state.challengeOfPlayer, challenge.fromPlayerId), challenge.toPlayerId);
   return {
-    state: { ...state, challenges, challengeOfPlayer },
-    events: [{ type: "CHALLENGE_EXPIRED", challengeId }],
+    state: removeChallenge(state, challenge),
+    events: [{ type: "CHALLENGE_EXPIRED", challenge }],
   };
 }
 
@@ -242,8 +264,9 @@ function startMatch(
   };
 
   let matchOfPlayer = state.matchOfPlayer;
-  if (a.type === "player") matchOfPlayer = { ...matchOfPlayer, [a.playerId]: matchId };
-  if (b.type === "player") matchOfPlayer = { ...matchOfPlayer, [b.playerId]: matchId };
+  for (const [, participant] of matchParticipants(entry)) {
+    if (participant.type === "player") matchOfPlayer = { ...matchOfPlayer, [participant.playerId]: matchId };
+  }
 
   return {
     entry,
@@ -342,8 +365,9 @@ function leaveMatch(state: LobbyState, matchId: string, playerId: string): Lobby
 
   const matches = omit(state.matches, matchId);
   let matchOfPlayer = state.matchOfPlayer;
-  if (entry.seatA.type === "player") matchOfPlayer = omit(matchOfPlayer, entry.seatA.playerId);
-  if (entry.seatB.type === "player") matchOfPlayer = omit(matchOfPlayer, entry.seatB.playerId);
+  for (const [, participant] of matchParticipants(entry)) {
+    if (participant.type === "player") matchOfPlayer = omit(matchOfPlayer, participant.playerId);
+  }
 
   return {
     state: { ...state, matches, matchOfPlayer },

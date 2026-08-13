@@ -105,7 +105,7 @@ describe("lobby — challenges", () => {
 
     const { state: after, events } = handleAction(
       state,
-      { type: "ACCEPT_CHALLENGE", challengeId: "c1", matchId: "m1" },
+      { type: "ACCEPT_CHALLENGE", challengeId: "c1", matchId: "m1", playerId: "p2" },
       NOW,
       rngAlwaysA,
     );
@@ -121,6 +121,32 @@ describe("lobby — challenges", () => {
     expect(startedEvent!.seatB).toEqual({ type: "player", playerId: "p2" });
   });
 
+  // Server-authoritative per the Solution section: only the invited player can act on a
+  // challenge that was sent to them — not the sender, not a bystander.
+  it("rejects accept/decline from anyone other than the challenge's target", () => {
+    let state = twoPlayers();
+    ({ state } = join(state, "p3", "Carol"));
+    ({ state } = handleAction(
+      state,
+      { type: "SEND_CHALLENGE", challengeId: "c1", fromPlayerId: "p1", toPlayerId: "p2" },
+      NOW,
+    ));
+
+    const { events: senderAccepts } = handleAction(
+      state,
+      { type: "ACCEPT_CHALLENGE", challengeId: "c1", matchId: "m1", playerId: "p1" },
+      NOW,
+    );
+    expect(senderAccepts).toEqual([{ type: "ACTION_REJECTED", reason: "not-the-target" }]);
+
+    const { events: bystanderDeclines } = handleAction(
+      state,
+      { type: "DECLINE_CHALLENGE", challengeId: "c1", playerId: "p3" },
+      NOW,
+    );
+    expect(bystanderDeclines).toEqual([{ type: "ACTION_REJECTED", reason: "not-the-target" }]);
+  });
+
   it("expires a pending challenge on CHALLENGE_TIMEOUT and frees both players", () => {
     let state = twoPlayers();
     ({ state } = handleAction(
@@ -129,13 +155,16 @@ describe("lobby — challenges", () => {
       NOW,
     ));
 
+    const challenge = { id: "c1", fromPlayerId: "p1", toPlayerId: "p2", deadline: NOW + CHALLENGE_DEADLINE_MS };
     const { state: after, events } = handleAction(state, { type: "CHALLENGE_TIMEOUT", challengeId: "c1" }, NOW);
-    expect(events).toEqual([{ type: "CHALLENGE_EXPIRED", challengeId: "c1" }]);
+    expect(events).toEqual([{ type: "CHALLENGE_EXPIRED", challenge }]);
     expect(playerStatus(after, "p1")).toBe("available");
     expect(playerStatus(after, "p2")).toBe("available");
   });
 
-  it("cancels a pending challenge when the challenger leaves the lobby", () => {
+  // CONTEXT.md distinguishes this from an explicit decline: "Если challenger покидает лобби
+  // ... до ответа — Challenge исчезает вместе с ним."
+  it("cancels (not declines) a pending challenge when a party leaves the lobby", () => {
     let state = twoPlayers();
     ({ state } = handleAction(
       state,
@@ -143,9 +172,10 @@ describe("lobby — challenges", () => {
       NOW,
     ));
 
+    const challenge = { id: "c1", fromPlayerId: "p1", toPlayerId: "p2", deadline: NOW + CHALLENGE_DEADLINE_MS };
     const { state: after, events } = handleAction(state, { type: "LEAVE_LOBBY", playerId: "p1" }, NOW);
     expect(events).toEqual([
-      { type: "CHALLENGE_DECLINED", challengeId: "c1" },
+      { type: "CHALLENGE_CANCELLED", challenge, reason: "challenger-left" },
       { type: "PLAYER_LEFT", playerId: "p1" },
     ]);
     expect(playerStatus(after, "p2")).toBe("available");
@@ -234,7 +264,12 @@ describe("lobby — forfeit, rematch, and leaving the result screen", () => {
       { type: "SEND_CHALLENGE", challengeId: "c1", fromPlayerId: "p1", toPlayerId: "p2" },
       NOW,
     ));
-    ({ state } = handleAction(state, { type: "ACCEPT_CHALLENGE", challengeId: "c1", matchId: "m1" }, NOW, rng));
+    ({ state } = handleAction(
+      state,
+      { type: "ACCEPT_CHALLENGE", challengeId: "c1", matchId: "m1", playerId: "p2" },
+      NOW,
+      rng,
+    ));
     return state;
   }
 

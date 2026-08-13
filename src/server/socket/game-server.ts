@@ -11,10 +11,11 @@ import {
   MATCH_TIMEOUT_MS,
   createEmptyLobbyState,
   handleAction,
+  matchParticipants,
   playerStatus,
 } from "../domain/lobby";
 import type { Cell } from "../domain/match.types";
-import type { LobbyAction, LobbyEvent, LobbyState } from "../domain/lobby.types";
+import type { LobbyAction, LobbyEvent, LobbyState, PendingChallenge } from "../domain/lobby.types";
 
 // Small delay before a bot's move broadcasts, so it doesn't feel instant/robotic. Injectable
 // so tests can drive full games without waiting on it for real.
@@ -22,11 +23,29 @@ const DEFAULT_BOT_MOVE_DELAY_MS = 500;
 
 type AckResult = { ok: true } | { ok: false; reason: string };
 
+// The only two LobbyEvent variants that represent "the request was denied" rather than
+// "something happened" — everything else is treated as a success ack.
 function ackFromEvents(events: LobbyEvent[]): AckResult {
-  const rejection = events.find(
-    (e): e is Extract<LobbyEvent, { type: "ACTION_REJECTED" }> => e.type === "ACTION_REJECTED",
-  );
-  return rejection ? { ok: false, reason: rejection.reason } : { ok: true };
+  for (const e of events) {
+    if (e.type === "ACTION_REJECTED" || e.type === "CHALLENGE_REJECTED") {
+      return { ok: false, reason: e.reason };
+    }
+  }
+  return { ok: true };
+}
+
+function emitToPlayer(playerSockets: Map<string, Socket>, playerId: string, event: string, payload: unknown) {
+  playerSockets.get(playerId)?.emit(event, payload);
+}
+
+function notifyChallengeParties(
+  playerSockets: Map<string, Socket>,
+  challenge: PendingChallenge,
+  event: string,
+  payload: unknown,
+) {
+  emitToPlayer(playerSockets, challenge.fromPlayerId, event, payload);
+  emitToPlayer(playerSockets, challenge.toPlayerId, event, payload);
 }
 
 function matchRoom(matchId: string): string {
@@ -81,12 +100,12 @@ export function attachGameServer(io: Server, options?: { botMoveDelayMs?: number
         case "PLAYER_JOINED":
         case "PLAYER_LEFT":
         case "CHALLENGE_CREATED":
-        case "CHALLENGE_REJECTED":
+        case "CHALLENGE_ACCEPTED":
         case "CHALLENGE_DECLINED":
+        case "CHALLENGE_CANCELLED":
         case "CHALLENGE_EXPIRED":
           lobbyChanged = true;
           break;
-        case "CHALLENGE_ACCEPTED":
         case "MATCH_STARTED":
         case "MATCH_WON":
         case "MATCH_FORFEITED":
@@ -105,17 +124,9 @@ export function attachGameServer(io: Server, options?: { botMoveDelayMs?: number
           break;
       }
 
-      if (
-        event.type === "CHALLENGE_ACCEPTED" ||
-        event.type === "CHALLENGE_DECLINED" ||
-        event.type === "CHALLENGE_EXPIRED"
-      ) {
-        const timer = challengeTimeoutTimers.get(event.challengeId);
-        if (timer) {
-          clearTimeout(timer);
-          challengeTimeoutTimers.delete(event.challengeId);
-        }
-      }
+      // CHALLENGE_REJECTED never changes state (it's a same-tick denial of the sender's own
+      // request, answered via that request's ack) — deliberately not routed here.
+
       if (event.type === "CHALLENGE_CREATED") {
         const { id, deadline } = event.challenge;
         const delay = Math.max(0, deadline - Date.now());
@@ -123,10 +134,35 @@ export function attachGameServer(io: Server, options?: { botMoveDelayMs?: number
           id,
           setTimeout(() => dispatch({ type: "CHALLENGE_TIMEOUT", challengeId: id }), delay),
         );
+        notifyChallengeParties(playerSockets, event.challenge, "challenge:pending", event.challenge);
+      }
+      if (
+        event.type === "CHALLENGE_ACCEPTED" ||
+        event.type === "CHALLENGE_DECLINED" ||
+        event.type === "CHALLENGE_CANCELLED" ||
+        event.type === "CHALLENGE_EXPIRED"
+      ) {
+        const timer = challengeTimeoutTimers.get(event.challenge.id);
+        if (timer) {
+          clearTimeout(timer);
+          challengeTimeoutTimers.delete(event.challenge.id);
+        }
+        const outcome =
+          event.type === "CHALLENGE_ACCEPTED"
+            ? "accepted"
+            : event.type === "CHALLENGE_DECLINED"
+              ? "declined"
+              : event.type === "CHALLENGE_EXPIRED"
+                ? "expired"
+                : event.reason; // CANCELLED: "challenger-left" | "target-left"
+        notifyChallengeParties(playerSockets, event.challenge, "challenge:resolved", {
+          challengeId: event.challenge.id,
+          outcome,
+        });
       }
       if (event.type === "MATCH_STARTED") {
-        for (const seat of [event.seatA, event.seatB]) {
-          if (seat.type === "player") playerSockets.get(seat.playerId)?.join(matchRoom(event.matchId));
+        for (const [, participant] of matchParticipants(event)) {
+          if (participant.type === "player") playerSockets.get(participant.playerId)?.join(matchRoom(event.matchId));
         }
       }
     }
@@ -221,7 +257,9 @@ export function attachGameServer(io: Server, options?: { botMoveDelayMs?: number
       (payload: { challengeId?: unknown }, ack?: (r: AckResult) => void) => {
         const challengeId = typeof payload?.challengeId === "string" ? payload.challengeId : "";
         ack?.(
-          ackFromEvents(dispatch({ type: "ACCEPT_CHALLENGE", challengeId, matchId: randomUUID() })),
+          ackFromEvents(
+            dispatch({ type: "ACCEPT_CHALLENGE", challengeId, matchId: randomUUID(), playerId }),
+          ),
         );
       },
     );
@@ -230,7 +268,7 @@ export function attachGameServer(io: Server, options?: { botMoveDelayMs?: number
       "challenge:decline",
       (payload: { challengeId?: unknown }, ack?: (r: AckResult) => void) => {
         const challengeId = typeof payload?.challengeId === "string" ? payload.challengeId : "";
-        ack?.(ackFromEvents(dispatch({ type: "DECLINE_CHALLENGE", challengeId })));
+        ack?.(ackFromEvents(dispatch({ type: "DECLINE_CHALLENGE", challengeId, playerId })));
       },
     );
 
@@ -274,8 +312,8 @@ export function attachGameServer(io: Server, options?: { botMoveDelayMs?: number
         const entry = state.matches[matchId];
         const events = dispatch({ type: "LEAVE_MATCH", matchId, playerId });
         if (entry && events.some((e) => e.type === "MATCH_ENDED")) {
-          for (const seat of [entry.seatA, entry.seatB]) {
-            if (seat.type === "player") playerSockets.get(seat.playerId)?.leave(matchRoom(matchId));
+          for (const [, participant] of matchParticipants(entry)) {
+            if (participant.type === "player") playerSockets.get(participant.playerId)?.leave(matchRoom(matchId));
           }
         }
         ack?.(ackFromEvents(events));

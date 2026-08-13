@@ -79,4 +79,50 @@ describe("game-server — socket.io smoke test", () => {
       socket.disconnect();
     }
   }, 10_000);
+
+  it("delivers a challenge to its target and starts a match once accepted", async () => {
+    const alice = await connect();
+    const bob = await connect();
+    try {
+      // Registered before either join, so the broadcast that first includes both players
+      // can't arrive in the gap before a listener exists (see the bot-match test's comment).
+      const bobKnownToAlice = new Promise<string>((resolve) => {
+        alice.on("lobby:update", (snapshot) => {
+          const bobEntry = snapshot.players.find((p: { nickname: string }) => p.nickname === "Bob");
+          if (bobEntry) resolve(bobEntry.id);
+        });
+      });
+      const bobPending = new Promise<{ id: string; fromPlayerId: string }>((resolve) =>
+        bob.once("challenge:pending", resolve),
+      );
+
+      const [aliceAck, bobAck] = await Promise.all([
+        new Promise((resolve) => alice.emit("lobby:join", { nickname: "Alice" }, resolve)),
+        new Promise((resolve) => bob.emit("lobby:join", { nickname: "Bob" }, resolve)),
+      ]);
+      expect(aliceAck).toEqual({ ok: true });
+      expect(bobAck).toEqual({ ok: true });
+
+      const bobId = await bobKnownToAlice;
+      const sendAck = await new Promise((resolve) =>
+        alice.emit("challenge:send", { toPlayerId: bobId }, resolve),
+      );
+      expect(sendAck).toEqual({ ok: true });
+      const pending = await bobPending;
+      expect(pending.fromPlayerId).not.toBe(bobId);
+
+      const aliceMatchPromise = new Promise((resolve) => alice.once("match:update", resolve));
+      const bobMatchPromise = new Promise((resolve) => bob.once("match:update", resolve));
+      const acceptAck = await new Promise((resolve) =>
+        bob.emit("challenge:accept", { challengeId: pending.id }, resolve),
+      );
+      expect(acceptAck).toEqual({ ok: true });
+
+      const [aliceMatch, bobMatch] = await Promise.all([aliceMatchPromise, bobMatchPromise]);
+      expect(aliceMatch).toEqual(bobMatch);
+    } finally {
+      alice.disconnect();
+      bob.disconnect();
+    }
+  });
 });
