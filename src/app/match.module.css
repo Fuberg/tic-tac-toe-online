@@ -63,7 +63,12 @@
 .cell[data-just-vanished] {
   border-color: #e67e22;
   border-style: dashed;
-  animation: vanish-flash 1s ease-out;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cell[data-just-vanished] {
+    animation: vanish-flash 1s ease-out;
+  }
 }
 
 @keyframes vanish-flash {
