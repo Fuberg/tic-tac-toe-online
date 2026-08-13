@@ -27,7 +27,14 @@ export const MATCH_TIMEOUT_MS = 10_000;
 export const CHALLENGE_DEADLINE_MS = 15_000;
 
 export function createEmptyLobbyState(): LobbyState {
-  return { players: {}, challenges: {}, matches: {}, challengeOfPlayer: {}, matchOfPlayer: {} };
+  return {
+    players: {},
+    challenges: {},
+    matches: {},
+    challengeOfPlayer: {},
+    matchOfPlayer: {},
+    disconnectedPlayers: {},
+  };
 }
 
 export function playerStatus(state: LobbyState, playerId: string): PlayerStatus | null {
@@ -108,6 +115,10 @@ export function handleAction(
       return requestRematch(state, action.matchId, action.playerId);
     case "LEAVE_MATCH":
       return leaveMatch(state, action.matchId, action.playerId);
+    case "DISCONNECT":
+      return disconnectPlayer(state, action.playerId);
+    case "RECONNECTED":
+      return reconnected(state, action.playerId);
     default:
       return { state, events: [] };
   }
@@ -311,10 +322,14 @@ function applyMatchAction(
   // a generic one so the transport still knows to broadcast the updated board/turn.
   const events = reexported.length > 0 ? reexported : [{ type: "MATCH_STATE_CHANGED" as const, matchId: entry.id }];
 
-  return {
-    state: { ...state, matches: { ...state.matches, [entry.id]: nextEntry } },
-    events,
-  };
+  let next: LobbyState = { ...state, matches: { ...state.matches, [entry.id]: nextEntry } };
+  if (nextEntry.match.status !== "in-progress") {
+    const cleanup = removeDisconnectedParticipants(next, nextEntry);
+    next = cleanup.state;
+    events.push(...cleanup.events);
+  }
+
+  return { state: next, events };
 }
 
 function forfeit(state: LobbyState, matchId: string, playerId: string): LobbyResult {
@@ -379,6 +394,51 @@ function leaveMatch(state: LobbyState, matchId: string, playerId: string): Lobby
     state: { ...state, matches, matchOfPlayer },
     events: [{ type: "MATCH_ENDED", matchId }],
   };
+}
+
+/** Issue #13: a disconnect while not in a match removes the player immediately, same as
+ * today. A disconnect mid-match can't do that directly — leaveLobby rejects while
+ * matchOfPlayer is set, and that's correct while the match is still live — so it's deferred:
+ * flagged here, then actually removed by removeDisconnectedParticipants once that player's
+ * own match concludes (see applyMatchAction), regardless of what the opponent does. */
+function disconnectPlayer(state: LobbyState, playerId: string): LobbyResult {
+  if (!state.players[playerId]) return { state, events: [] };
+
+  const matchId = state.matchOfPlayer[playerId];
+  const inProgress = matchId ? state.matches[matchId]?.match.status === "in-progress" : false;
+  if (!inProgress) return leaveLobby(state, playerId);
+
+  return {
+    state: { ...state, disconnectedPlayers: { ...state.disconnectedPlayers, [playerId]: true } },
+    events: [],
+  };
+}
+
+/** Cancels a pending deferred removal — the player reconnected (Socket.IO connection state
+ * recovery, same playerId) before their match concluded, so they're no longer disconnected. */
+function reconnected(state: LobbyState, playerId: string): LobbyResult {
+  if (!state.disconnectedPlayers[playerId]) return { state, events: [] };
+  return { state: { ...state, disconnectedPlayers: omit(state.disconnectedPlayers, playerId) }, events: [] };
+}
+
+/** Once a match concludes, fully removes any participant who disconnected mid-match (flagged
+ * by disconnectPlayer) from the lobby roster — bypassing leaveLobby's in-match guard directly,
+ * since by construction the match just ended. */
+function removeDisconnectedParticipants(state: LobbyState, entry: MatchEntry): LobbyResult {
+  let next = state;
+  const events: LobbyEvent[] = [];
+  for (const [, participant] of matchParticipants(entry)) {
+    if (participant.type !== "player" || !next.disconnectedPlayers[participant.playerId]) continue;
+    const { playerId } = participant;
+    next = {
+      ...next,
+      players: omit(next.players, playerId),
+      matchOfPlayer: omit(next.matchOfPlayer, playerId),
+      disconnectedPlayers: omit(next.disconnectedPlayers, playerId),
+    };
+    events.push({ type: "PLAYER_LEFT", playerId });
+  }
+  return { state: next, events };
 }
 
 function omit<T extends Record<string, unknown>>(obj: T, key: string): T {

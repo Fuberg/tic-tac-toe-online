@@ -36,6 +36,10 @@ export interface LobbyState {
   challengeOfPlayer: Record<string, string>;
   /** playerId -> matchId, for their single active match, including its result screen. */
   matchOfPlayer: Record<string, string>;
+  /** Players who disconnected while in-match (issue #13): leaving the lobby mid-match is
+   * rejected by design, so their roster removal is deferred here until their match concludes,
+   * at which point it happens automatically as a side effect of that resolution. */
+  disconnectedPlayers: Record<string, true>;
 }
 
 export type PlayerStatus = "available" | "busy" | "in-game";
@@ -52,7 +56,9 @@ export type LobbyAction =
   | { type: "REQUEST_BOT_MOVE"; matchId: string }
   | { type: "FORFEIT"; matchId: string; playerId: string }
   | { type: "REQUEST_REMATCH"; matchId: string; playerId: string }
-  | { type: "LEAVE_MATCH"; matchId: string; playerId: string };
+  | { type: "LEAVE_MATCH"; matchId: string; playerId: string }
+  | { type: "DISCONNECT"; playerId: string }
+  | { type: "RECONNECTED"; playerId: string };
 
 /** Closed set of reasons an action can be rejected for, across every action type — kept as
  * one union (rather than per-action ones) since ACTION_REJECTED is a deliberate catch-all. */

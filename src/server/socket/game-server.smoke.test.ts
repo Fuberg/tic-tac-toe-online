@@ -447,4 +447,32 @@ describe("game-server — match-timeout forfeit on disconnect", () => {
       bob.disconnect();
     }
   }, 10_000);
+
+  // Issue #13: previously Alice's lobby entry lingered forever, only ever cleared as a side
+  // effect of Bob explicitly leaving the finished match — and even then it flipped to
+  // "available" rather than disappearing. Bob here never sends match:leave.
+  it("removes the disconnected player's lobby entry once their match resolves via forfeit, without the opponent taking any action", async () => {
+    const alice = await connect();
+    const bob = await connect();
+    try {
+      await challengeIntoMatch(alice, bob);
+
+      const aliceGoneFromLobby = new Promise<{ players: { nickname: string }[] }>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("timed out waiting for lobby:update")), 5_000);
+        bob.on("lobby:update", (snapshot) => {
+          if (!snapshot.players.some((p: { nickname: string }) => p.nickname === "Alice")) {
+            clearTimeout(timer);
+            resolve(snapshot);
+          }
+        });
+      });
+
+      alice.disconnect();
+      const snapshot = await aliceGoneFromLobby;
+      expect(snapshot.players.some((p) => p.nickname === "Alice")).toBe(false);
+      expect(snapshot.players.some((p) => p.nickname === "Bob")).toBe(true);
+    } finally {
+      bob.disconnect();
+    }
+  }, 10_000);
 });

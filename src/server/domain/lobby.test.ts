@@ -392,3 +392,99 @@ describe("lobby — forfeit, rematch, and leaving the result screen", () => {
     expect(playerStatus(after, "p2")).toBe("available");
   });
 });
+
+// Issue #13: a player who disconnects mid-match used to linger in the lobby roster forever —
+// their matchOfPlayer entry only got cleared as a side effect of the opponent explicitly
+// leaving the finished match, at which point they'd show as "available" despite nobody being
+// connected as them.
+describe("lobby — disconnecting", () => {
+  function startHumanMatch(rng: () => number) {
+    let state = createEmptyLobbyState();
+    ({ state } = join(state, "p1", "Alice"));
+    ({ state } = join(state, "p2", "Bob"));
+    ({ state } = handleAction(
+      state,
+      { type: "SEND_CHALLENGE", challengeId: "c1", fromPlayerId: "p1", toPlayerId: "p2" },
+      NOW,
+    ));
+    ({ state } = handleAction(
+      state,
+      { type: "ACCEPT_CHALLENGE", challengeId: "c1", matchId: "m1", playerId: "p2" },
+      NOW,
+      rng,
+    ));
+    return state;
+  }
+
+  it("removes a player from the lobby immediately when they disconnect while not in a match (regression guard)", () => {
+    let state = createEmptyLobbyState();
+    ({ state } = join(state, "p1", "Alice"));
+
+    const { state: after, events } = handleAction(state, { type: "DISCONNECT", playerId: "p1" }, NOW);
+    expect(playerStatus(after, "p1")).toBeNull();
+    expect(events).toEqual([{ type: "PLAYER_LEFT", playerId: "p1" }]);
+  });
+
+  it("fully removes a player who disconnected mid-match once their match resolves via forfeit — regardless of the opponent's actions", () => {
+    const state = startHumanMatch(rngAlwaysA);
+
+    const { state: disconnected, events: disconnectEvents } = handleAction(
+      state,
+      { type: "DISCONNECT", playerId: "p1" },
+      NOW,
+    );
+    // No immediate removal — leaving mid-match is rejected by design, so this is deferred.
+    expect(disconnectEvents).toEqual([]);
+    expect(playerStatus(disconnected, "p1")).toBe("in-game");
+
+    // Match-timeout forfeit fires (existing mechanism, unchanged) — opponent p2 takes no action.
+    const { state: forfeited, events } = handleAction(
+      disconnected,
+      { type: "FORFEIT", matchId: "m1", playerId: "p1" },
+      NOW,
+    );
+    expect(forfeited.matches.m1.match.status).toBe("forfeited");
+    expect(playerStatus(forfeited, "p1")).toBeNull(); // gone — not "available"
+    expect(forfeited.players.p1).toBeUndefined();
+    expect(events.some((e) => e.type === "PLAYER_LEFT" && e.playerId === "p1")).toBe(true);
+    // Opponent is unaffected and didn't need to do anything.
+    expect(playerStatus(forfeited, "p2")).toBe("in-game");
+  });
+
+  it("removes a disconnected player once their match resolves via a normal win too, not just forfeit", () => {
+    let state = startHumanMatch(rngAlwaysA); // p1=seatA="X", p2=seatB="O"
+    ({ state } = handleAction(state, { type: "DISCONNECT", playerId: "p2" }, NOW));
+
+    const xWinningMoves = [0, 3, 1, 4, 2];
+    for (let i = 0; i < xWinningMoves.length; i++) {
+      const playerId = i % 2 === 0 ? "p1" : "p2";
+      ({ state } = handleAction(state, { type: "PLACE", matchId: "m1", playerId, cell: xWinningMoves[i] as never }, NOW));
+    }
+
+    expect(state.matches.m1.match.status).toBe("won");
+    expect(playerStatus(state, "p2")).toBeNull();
+    expect(playerStatus(state, "p1")).toBe("in-game");
+  });
+
+  it("cancels the deferred removal if the disconnected player reconnects before the match resolves", () => {
+    let state = startHumanMatch(rngAlwaysA);
+    ({ state } = handleAction(state, { type: "DISCONNECT", playerId: "p1" }, NOW));
+    ({ state } = handleAction(state, { type: "RECONNECTED", playerId: "p1" }, NOW));
+
+    const { state: forfeited } = handleAction(state, { type: "FORFEIT", matchId: "m1", playerId: "p2" }, NOW);
+    expect(forfeited.matches.m1.match.status).toBe("forfeited");
+    // p1 reconnected in time — still present, same as the pre-existing forfeit behavior.
+    expect(playerStatus(forfeited, "p1")).toBe("in-game");
+  });
+
+  it("only the reconnected identity remains if the disconnected player rejoins under a new session before the match resolves", () => {
+    let state = startHumanMatch(rngAlwaysA);
+    ({ state } = handleAction(state, { type: "DISCONNECT", playerId: "p1" }, NOW));
+    // p1 reconnects under a brand-new session/playerId (no Socket.IO recovery) and re-joins.
+    ({ state } = join(state, "p1-new", "Alice"));
+
+    const { state: forfeited } = handleAction(state, { type: "FORFEIT", matchId: "m1", playerId: "p1" }, NOW);
+    expect(playerStatus(forfeited, "p1")).toBeNull(); // stale identity gone
+    expect(playerStatus(forfeited, "p1-new")).toBe("available"); // reconnected identity remains
+  });
+});

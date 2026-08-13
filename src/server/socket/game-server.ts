@@ -228,6 +228,7 @@ export function attachGameServer(
 
     if (socket.recovered) {
       clearMatchTimer(playerId);
+      dispatch({ type: "RECONNECTED", playerId });
       const matchId = state.matchOfPlayer[playerId];
       if (matchId) socket.join(matchRoom(matchId));
       socket.emit("lobby:update", buildLobbySnapshot(state));
@@ -342,9 +343,12 @@ export function attachGameServer(
             dispatch({ type: "FORFEIT", matchId, playerId });
           }, matchTimeoutMs),
         );
-      } else if (state.players[playerId]) {
-        dispatch({ type: "LEAVE_LOBBY", playerId });
       }
+      // DISCONNECT removes them from the lobby immediately when not in an in-progress match,
+      // same as before. Otherwise it defers removal until the match above resolves — the
+      // lobby-roster cleanup then happens as a direct consequence of that resolution, in the
+      // domain reducer itself, regardless of what the opponent does (issue #13).
+      dispatch({ type: "DISCONNECT", playerId });
     });
   });
 
