@@ -198,7 +198,11 @@ export function Match({ snapshot }: { snapshot: MatchSnapshot }) {
           </button>
         </div>
       )}
-      {error && <p className={styles.error}>{error}</p>}
+      {error && (
+        <p className={styles.error} role="alert" aria-atomic="true">
+          {error}
+        </p>
+      )}
     </section>
   );
 }

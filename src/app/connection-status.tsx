@@ -15,7 +15,7 @@ export function ConnectionStatus() {
   const { status } = useSocket();
 
   return (
-    <div className={styles.status} data-status={status}>
+    <div className={styles.status} data-status={status} role="status" aria-live="polite" aria-atomic="true">
       <span className={styles.dot} />
       {STATUS_LABEL[status]}
     </div>

@@ -181,6 +181,7 @@ export function Lobby({ snapshot }: { snapshot: LobbySnapshot }) {
 
   function handleAcceptChallenge() {
     if (!pendingChallenge) return;
+    setError(null);
     socket.emit("challenge:accept", { challengeId: pendingChallenge.id }, (result: AckResult) => {
       if (!result.ok) setError("Не удалось принять вызов, попробуйте ещё раз");
     });
@@ -188,6 +189,7 @@ export function Lobby({ snapshot }: { snapshot: LobbySnapshot }) {
 
   function handleDeclineChallenge() {
     if (!pendingChallenge) return;
+    setError(null);
     socket.emit("challenge:decline", { challengeId: pendingChallenge.id }, (result: AckResult) => {
       if (!result.ok) setError("Не удалось отклонить вызов, попробуйте ещё раз");
     });
@@ -223,7 +225,11 @@ export function Lobby({ snapshot }: { snapshot: LobbySnapshot }) {
         <button type="submit" disabled={connectionStatus !== "connected" || joining}>
           Войти в лобби
         </button>
-        {error && <p className={styles.error}>{error}</p>}
+        {error && (
+          <p className={styles.error} role="alert" aria-atomic="true">
+            {error}
+          </p>
+        )}
       </form>
     );
   }
@@ -236,8 +242,16 @@ export function Lobby({ snapshot }: { snapshot: LobbySnapshot }) {
           Выйти
         </button>
       </div>
-      {error && <p className={styles.error}>{error}</p>}
-      {challengeNotice && <p className={styles.notice}>{challengeNotice}</p>}
+      {error && (
+        <p className={styles.error} role="alert" aria-atomic="true">
+          {error}
+        </p>
+      )}
+      {challengeNotice && (
+        <p className={styles.notice} role="status" aria-live="polite" aria-atomic="true">
+          {challengeNotice}
+        </p>
+      )}
       {pendingChallenge && (
         <ChallengePanel
           challenge={pendingChallenge}
