@@ -12,10 +12,14 @@ describe("game-server — socket.io smoke test", () => {
   let io: SocketIOServer;
   let url: string;
 
+  // Passed as attachGameServer's lobbyTimeoutMs so the lobby-timeout tests below don't wait
+  // on the real 5s default.
+  const TEST_LOBBY_TIMEOUT_MS = 20;
+
   beforeEach(async () => {
     httpServer = createServer();
     io = new SocketIOServer(httpServer);
-    attachGameServer(io, { botMoveDelayMs: 0 });
+    attachGameServer(io, { botMoveDelayMs: 0, lobbyTimeoutMs: TEST_LOBBY_TIMEOUT_MS });
     await new Promise<void>((resolve) => httpServer.listen(0, resolve));
     const { port } = httpServer.address() as AddressInfo;
     url = `http://localhost:${port}`;
@@ -120,6 +124,55 @@ describe("game-server — socket.io smoke test", () => {
 
       const [aliceMatch, bobMatch] = await Promise.all([aliceMatchPromise, bobMatchPromise]);
       expect(aliceMatch).toEqual(bobMatch);
+    } finally {
+      alice.disconnect();
+      bob.disconnect();
+    }
+  });
+
+  it("removes a player from the lobby after the lobby-timeout elapses while their tab is hidden", async () => {
+    const alice = await connect();
+    const bob = await connect();
+    try {
+      await new Promise((resolve) => alice.emit("lobby:join", { nickname: "Alice" }, resolve));
+      await new Promise((resolve) => bob.emit("lobby:join", { nickname: "Bob" }, resolve));
+
+      const aliceLeft = new Promise<void>((resolve) => {
+        bob.on("lobby:update", (snapshot) => {
+          if (!snapshot.players.some((p: { nickname: string }) => p.nickname === "Alice")) resolve();
+        });
+      });
+      alice.emit("lobby:visibility", { hidden: true });
+
+      await aliceLeft;
+    } finally {
+      alice.disconnect();
+      bob.disconnect();
+    }
+  });
+
+  it("does not remove a player if their tab becomes visible again before the lobby-timeout", async () => {
+    const alice = await connect();
+    const bob = await connect();
+    try {
+      await new Promise((resolve) => alice.emit("lobby:join", { nickname: "Alice" }, resolve));
+      await new Promise((resolve) => bob.emit("lobby:join", { nickname: "Bob" }, resolve));
+
+      alice.emit("lobby:visibility", { hidden: true });
+      alice.emit("lobby:visibility", { hidden: false });
+
+      // Outlast the lobby-timeout window with no removal event arriving.
+      const removed = new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => resolve(false), TEST_LOBBY_TIMEOUT_MS * 3);
+        bob.on("lobby:update", (snapshot) => {
+          if (!snapshot.players.some((p: { nickname: string }) => p.nickname === "Alice")) {
+            clearTimeout(timer);
+            resolve(true);
+          }
+        });
+      });
+
+      expect(await removed).toBe(false);
     } finally {
       alice.disconnect();
       bob.disconnect();

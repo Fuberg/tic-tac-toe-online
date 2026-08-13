@@ -1,13 +1,9 @@
-// Issue #2: the client establishes a Socket.IO connection to the same-origin custom
-// server (server.ts) and surfaces connected/disconnected status. No lobby/nickname UI
-// here yet — that's separate work per issue #1's Out of Scope.
+// Issue #2: surfaces the shared Socket.IO connection's status. The connection itself now
+// lives in SocketProvider (issue #3) so lobby components can use the same socket.
 "use client";
 
-import { useEffect, useState } from "react";
-import { io } from "socket.io-client";
+import { useSocket, type SocketStatus } from "./socket-provider";
 import styles from "./connection-status.module.css";
-
-type SocketStatus = "connecting" | "connected" | "disconnected";
 
 const STATUS_LABEL: Record<SocketStatus, string> = {
   connecting: "Подключение…",
@@ -16,25 +12,7 @@ const STATUS_LABEL: Record<SocketStatus, string> = {
 };
 
 export function ConnectionStatus() {
-  const [status, setStatus] = useState<SocketStatus>("connecting");
-
-  useEffect(() => {
-    const socket = io();
-
-    const handleConnect = () => setStatus("connected");
-    const handleDisconnect = () => setStatus("disconnected");
-
-    socket.on("connect", handleConnect);
-    socket.on("disconnect", handleDisconnect);
-    socket.on("connect_error", handleDisconnect);
-
-    return () => {
-      socket.off("connect", handleConnect);
-      socket.off("disconnect", handleDisconnect);
-      socket.off("connect_error", handleDisconnect);
-      socket.disconnect();
-    };
-  }, []);
+  const { status } = useSocket();
 
   return (
     <div className={styles.status} data-status={status}>

@@ -1,13 +1,20 @@
 import { ConnectionStatus } from "./connection-status";
+import { Lobby } from "./lobby";
+import { SocketProvider } from "./socket-provider";
 import styles from "./page.module.css";
 
 export default function Home() {
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <h1>Tic-Tac-Toe Online</h1>
-        <ConnectionStatus />
-      </main>
-    </div>
+    <SocketProvider>
+      <div className={styles.page}>
+        <main className={styles.main}>
+          <div className={styles.top}>
+            <h1>Tic-Tac-Toe Online</h1>
+            <ConnectionStatus />
+          </div>
+          <Lobby />
+        </main>
+      </div>
+    </SocketProvider>
   );
 }

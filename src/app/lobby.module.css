@@ -1,0 +1,131 @@
+.joinForm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.joinForm label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.joinForm input {
+  width: 100%;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--button-secondary-border);
+  font-size: 16px;
+  color: var(--text-primary);
+  background: var(--foreground);
+}
+
+.joinForm input:disabled {
+  opacity: 0.6;
+}
+
+.joinForm button,
+.lobbyHeader button {
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 128px;
+  border: 1px solid transparent;
+  background: var(--text-primary);
+  color: var(--background);
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.joinForm button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .joinForm button:not(:disabled):hover,
+  .lobbyHeader button:hover {
+    background: var(--button-primary-hover);
+  }
+}
+
+.error {
+  color: #e74c3c;
+  font-size: 14px;
+}
+
+.lobby {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.lobbyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lobbyHeader h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.players {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.player {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--button-secondary-border);
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.playerName {
+  font-weight: 500;
+}
+
+.you {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.playerStatus {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.playerStatus[data-status="available"] {
+  color: #2ecc71;
+}
+
+.playerStatus[data-status="busy"] {
+  color: #f1c40f;
+}
+
+.playerStatus[data-status="in-game"] {
+  color: #999;
+}
+
+.empty {
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding: 10px 14px;
+}
