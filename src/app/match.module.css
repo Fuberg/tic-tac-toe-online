@@ -22,6 +22,7 @@
   color: var(--text-secondary);
 }
 
+.marks,
 .markCount {
   font-size: 13px;
   color: var(--text-secondary);

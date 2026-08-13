@@ -45,6 +45,13 @@ function opponentLabel(opponent: ParticipantRef | null): string {
   return opponent.type === "bot" ? `Бот (${DIFFICULTY_LABEL[opponent.difficulty]})` : "Соперник";
 }
 
+// Issue #11: label a seat with "Вы" only for the local seat — with no local seat
+// (e.g. observer/disconnected view) this falls back to opponentLabel for both seats, so
+// both marks are still shown without ever claiming one as "yours".
+function seatLabel(participant: ParticipantRef, isLocal: boolean): string {
+  return isLocal ? "Вы" : opponentLabel(participant);
+}
+
 export function Match({ snapshot }: { snapshot: MatchSnapshot }) {
   const { socket } = useSocket();
   const [actionPending, setActionPending] = useState(false);
@@ -58,6 +65,11 @@ export function Match({ snapshot }: { snapshot: MatchSnapshot }) {
         : null;
   const localMark = localSeat ? snapshot.match[localSeat] : null;
   const opponent = localSeat ? snapshot[localSeat === "seatA" ? "seatB" : "seatA"] : null;
+
+  // Issue #11: marks swap on rematch, so re-derive both seats' labels/marks from the
+  // snapshot every render instead of caching them anywhere.
+  const seatALabel = seatLabel(snapshot.seatA, localSeat === "seatA");
+  const seatBLabel = seatLabel(snapshot.seatB, localSeat === "seatB");
 
   const isMyTurn =
     localMark != null && snapshot.match.status === "in-progress" && snapshot.match.currentPlayer === localMark;
@@ -140,6 +152,9 @@ export function Match({ snapshot }: { snapshot: MatchSnapshot }) {
       <div className={styles.header}>
         <h2>Матч против: {opponentLabel(opponent)}</h2>
         <p className={styles.status}>{statusText}</p>
+        <p className={styles.marks}>
+          {seatALabel}: {snapshot.match.seatA} · {seatBLabel}: {snapshot.match.seatB}
+        </p>
         {myMarkCount != null && <p className={styles.markCount}>Ваших фишек на поле: {myMarkCount}/3</p>}
       </div>
       <div className={styles.board}>
