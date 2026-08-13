@@ -107,6 +107,12 @@
   color: var(--text-secondary);
 }
 
+.playerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .playerStatus {
   font-size: 13px;
   color: var(--text-secondary);
@@ -128,6 +134,88 @@
   color: var(--text-secondary);
   font-size: 14px;
   padding: 10px 14px;
+}
+
+.challengeButton {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 128px;
+  border: 1px solid var(--button-secondary-border);
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.challengeButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .challengeButton:not(:disabled):hover {
+    background: var(--button-secondary-hover);
+  }
+}
+
+.notice {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.challengePanel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--button-secondary-border);
+  background: var(--foreground);
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.challengeTimer {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.challengeActions {
+  display: flex;
+  gap: 10px;
+}
+
+.challengeActions button {
+  height: 36px;
+  padding: 0 18px;
+  border-radius: 128px;
+  border: 1px solid transparent;
+  background: var(--text-primary);
+  color: var(--background);
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.challengeActions .declineButton {
+  background: transparent;
+  border: 1px solid var(--button-secondary-border);
+  color: var(--text-primary);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .challengeActions button:hover {
+    background: var(--button-primary-hover);
+  }
+
+  .challengeActions .declineButton:hover {
+    background: var(--button-secondary-hover);
+  }
 }
 
 .bots {

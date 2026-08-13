@@ -26,6 +26,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
     socket.on("connect_error", handleDisconnect);
+    // Dev-only React Strict Mode mounts this effect twice (mount -> cleanup -> mount) against
+    // the same socket instance from useState above. The cleanup's disconnect() below is a
+    // manual disconnect, which socket.io-client never auto-retries — without this explicit
+    // reconnect on (re)mount, the phantom Strict Mode cycle would leave the socket permanently
+    // disconnected in dev.
+    socket.connect();
 
     return () => {
       socket.off("connect", handleConnect);

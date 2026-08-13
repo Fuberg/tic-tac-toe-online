@@ -1,8 +1,10 @@
 // Issue #3: nickname entry -> lobby with a live online-players list -> explicit leave.
 // Issue #4: also lists the fixed set of bots and starts a Match against one on click.
-// All the actual join/leave/lobby-timeout/match-start logic lives in the domain reducer
-// (src/server/domain/lobby.ts) behind the socket events used here — this component is a thin
-// view over lobby:join / lobby:leave / lobby:update / lobby:visibility / bot:start.
+// Issue #7: challenging another online player -> shared countdown -> accept/decline.
+// All the actual join/leave/lobby-timeout/match-start/challenge logic lives in the domain
+// reducer (src/server/domain/lobby.ts) behind the socket events used here — this component is
+// a thin view over lobby:join / lobby:leave / lobby:update / lobby:visibility / bot:start /
+// challenge:send / challenge:accept / challenge:decline / challenge:pending / challenge:resolved.
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
@@ -26,12 +28,33 @@ interface LobbySnapshot {
   bots: LobbyBot[];
 }
 
+// Mirrors server/domain/lobby.types.ts's PendingChallenge — kept as a local shape (like
+// LobbySnapshot above) rather than imported, since the client only ever sees it as a socket
+// payload, never the server module itself.
+interface PendingChallenge {
+  id: string;
+  fromPlayerId: string;
+  toPlayerId: string;
+  deadline: number;
+}
+
+type ChallengeOutcome = "accepted" | "declined" | "expired" | "challenger-left" | "target-left";
+
 type AckResult = { ok: true } | { ok: false; reason: string };
 
 const STATUS_LABEL: Record<NonNullable<LobbyPlayer["status"]>, string> = {
   available: "Свободен",
   busy: "Занят",
   "in-game": "В игре",
+};
+
+// No label for "accepted" — that outcome is reflected by the view switching to the Match
+// board (game.tsx reacts to match:update), not by a notice here.
+const CHALLENGE_OUTCOME_LABEL: Partial<Record<ChallengeOutcome, string>> = {
+  declined: "Вызов отклонён",
+  expired: "Время вызова истекло",
+  "challenger-left": "Игрок, отправивший вызов, покинул лобби",
+  "target-left": "Игрок, которому вы отправили вызов, покинул лобби",
 };
 
 export function Lobby() {
@@ -43,6 +66,17 @@ export function Lobby() {
   const [players, setPlayers] = useState<LobbyPlayer[]>([]);
   const [bots, setBots] = useState<LobbyBot[]>([]);
   const [startingBot, setStartingBot] = useState<BotDifficulty | null>(null);
+  const [pendingChallenge, setPendingChallenge] = useState<PendingChallenge | null>(null);
+  const [challengeNotice, setChallengeNotice] = useState<string | null>(null);
+  const [sendingChallengeTo, setSendingChallengeTo] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  // Leaving the lobby (explicitly or via a server shutdown) always clears out whatever
+  // challenge state was showing — pulled out since both exit paths below need it together.
+  function clearChallengeUI() {
+    setPendingChallenge(null);
+    setChallengeNotice(null);
+  }
 
   useEffect(() => {
     const handleLobbyUpdate = (snapshot: LobbySnapshot) => {
@@ -55,6 +89,7 @@ export function Lobby() {
     const handleShutdown = () => {
       setJoined(false);
       setError("Сервер обновляется — попробуйте зайти снова через минуту.");
+      clearChallengeUI();
     };
 
     socket.on("lobby:update", handleLobbyUpdate);
@@ -64,6 +99,40 @@ export function Lobby() {
       socket.off("server:shutdown", handleShutdown);
     };
   }, [socket]);
+
+  // Issue #7: a challenge sent to or received from another player. challenge:pending arrives
+  // for both parties the moment SEND_CHALLENGE succeeds; challenge:resolved arrives once for
+  // whichever of accept/decline/expire/cancel ends it. Outcome "accepted" needs no notice here
+  // — the view switches to the Match board on its own once match:update arrives (see game.tsx).
+  useEffect(() => {
+    const handleChallengePending = (challenge: PendingChallenge) => {
+      setPendingChallenge(challenge);
+      setChallengeNotice(null);
+    };
+    const handleChallengeResolved = (payload: { challengeId: string; outcome: ChallengeOutcome }) => {
+      setPendingChallenge((current) => (current?.id === payload.challengeId ? null : current));
+      if (payload.outcome !== "accepted") {
+        setChallengeNotice(CHALLENGE_OUTCOME_LABEL[payload.outcome] ?? null);
+      }
+    };
+
+    socket.on("challenge:pending", handleChallengePending);
+    socket.on("challenge:resolved", handleChallengeResolved);
+    return () => {
+      socket.off("challenge:pending", handleChallengePending);
+      socket.off("challenge:resolved", handleChallengeResolved);
+    };
+  }, [socket]);
+
+  // Ticks the shared countdown while a challenge is pending — only runs while one exists, and
+  // keyed on its id (not the object itself) so a re-render with the same challenge doesn't
+  // restart the interval.
+  const pendingChallengeId = pendingChallenge?.id ?? null;
+  useEffect(() => {
+    if (!pendingChallengeId) return;
+    const interval = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(interval);
+  }, [pendingChallengeId]);
 
   // Lobby-timeout (CONTEXT.md): a hidden-but-not-closed tab is removed from the lobby after a
   // server-side delay. Only relevant once actually in the lobby, so it doesn't fire before
@@ -101,6 +170,31 @@ export function Lobby() {
     socket.emit("lobby:leave", {}, () => {
       setJoined(false);
       setPlayers([]);
+      clearChallengeUI();
+    });
+  }
+
+  function handleSendChallenge(toPlayerId: string) {
+    setSendingChallengeTo(toPlayerId);
+    setChallengeNotice(null);
+    setError(null);
+    socket.emit("challenge:send", { toPlayerId }, (result: AckResult) => {
+      setSendingChallengeTo(null);
+      if (!result.ok) setError("Не удалось отправить вызов, попробуйте ещё раз");
+    });
+  }
+
+  function handleAcceptChallenge() {
+    if (!pendingChallenge) return;
+    socket.emit("challenge:accept", { challengeId: pendingChallenge.id }, (result: AckResult) => {
+      if (!result.ok) setError("Не удалось принять вызов, попробуйте ещё раз");
+    });
+  }
+
+  function handleDeclineChallenge() {
+    if (!pendingChallenge) return;
+    socket.emit("challenge:decline", { challengeId: pendingChallenge.id }, (result: AckResult) => {
+      if (!result.ok) setError("Не удалось отклонить вызов, попробуйте ещё раз");
     });
   }
 
@@ -148,6 +242,17 @@ export function Lobby() {
         </button>
       </div>
       {error && <p className={styles.error}>{error}</p>}
+      {challengeNotice && <p className={styles.notice}>{challengeNotice}</p>}
+      {pendingChallenge && (
+        <ChallengePanel
+          challenge={pendingChallenge}
+          selfId={socket.id}
+          players={players}
+          remainingSeconds={Math.max(0, Math.ceil((pendingChallenge.deadline - now) / 1000))}
+          onAccept={handleAcceptChallenge}
+          onDecline={handleDeclineChallenge}
+        />
+      )}
       <ul className={styles.players}>
         {players.map((player) => (
           <li key={player.id} className={styles.player}>
@@ -155,11 +260,23 @@ export function Lobby() {
               {player.nickname}
               {player.id === socket.id && <span className={styles.you}> (вы)</span>}
             </span>
-            {player.status && (
-              <span className={styles.playerStatus} data-status={player.status}>
-                {STATUS_LABEL[player.status]}
-              </span>
-            )}
+            <span className={styles.playerActions}>
+              {player.status && (
+                <span className={styles.playerStatus} data-status={player.status}>
+                  {STATUS_LABEL[player.status]}
+                </span>
+              )}
+              {player.id !== socket.id && player.status === "available" && (
+                <button
+                  type="button"
+                  className={styles.challengeButton}
+                  onClick={() => handleSendChallenge(player.id)}
+                  disabled={pendingChallenge !== null || sendingChallengeTo !== null}
+                >
+                  Вызвать
+                </button>
+              )}
+            </span>
           </li>
         ))}
         {players.every((p) => p.id === socket.id) && (
@@ -174,7 +291,7 @@ export function Lobby() {
               <button
                 type="button"
                 onClick={() => handleStartBot(bot.difficulty)}
-                disabled={startingBot !== null}
+                disabled={startingBot !== null || pendingChallenge !== null}
               >
                 {DIFFICULTY_LABEL[bot.difficulty]}
               </button>
@@ -183,5 +300,53 @@ export function Lobby() {
         </ul>
       </div>
     </section>
+  );
+}
+
+function ChallengePanel({
+  challenge,
+  selfId,
+  players,
+  remainingSeconds,
+  onAccept,
+  onDecline,
+}: {
+  challenge: PendingChallenge;
+  selfId: string | undefined;
+  players: LobbyPlayer[];
+  remainingSeconds: number;
+  onAccept: () => void;
+  onDecline: () => void;
+}) {
+  const incoming = challenge.toPlayerId === selfId;
+  const otherPlayerId = incoming ? challenge.fromPlayerId : challenge.toPlayerId;
+  const otherNickname = players.find((p) => p.id === otherPlayerId)?.nickname ?? "Игрок";
+
+  return (
+    <div className={styles.challengePanel}>
+      {incoming ? (
+        <>
+          <p>
+            <strong>{otherNickname}</strong> вызывает вас на матч!
+          </p>
+          <p className={styles.challengeTimer}>Осталось: {remainingSeconds}с</p>
+          <div className={styles.challengeActions}>
+            <button type="button" onClick={onAccept}>
+              Принять
+            </button>
+            <button type="button" className={styles.declineButton} onClick={onDecline}>
+              Отклонить
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p>
+            Вызов отправлен игроку <strong>{otherNickname}</strong>. Ожидание ответа…
+          </p>
+          <p className={styles.challengeTimer}>Осталось: {remainingSeconds}с</p>
+        </>
+      )}
+    </div>
   );
 }
