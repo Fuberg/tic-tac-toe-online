@@ -299,6 +299,7 @@ export function Lobby({ snapshot }: { snapshot: LobbySnapshot }) {
             <li key={bot.id}>
               <button
                 type="button"
+                data-difficulty={bot.difficulty}
                 onClick={() => handleStartBot(bot.difficulty)}
                 disabled={startingBot !== null || pendingChallenge !== null}
               >

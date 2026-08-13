@@ -1,25 +1,50 @@
 .status {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 15px;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 128px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--status-neutral);
+  background: var(--status-neutral-tint);
 }
 
 .dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--status-neutral);
+  background: currentColor;
 }
 
-.status[data-status="connected"] .dot {
-  background: var(--status-success);
+.status[data-status="connected"] {
+  color: var(--status-success);
+  background: var(--status-success-tint);
 }
 
-.status[data-status="disconnected"] .dot {
-  background: var(--status-danger);
+.status[data-status="disconnected"] {
+  color: var(--status-danger);
+  background: var(--status-danger-tint);
 }
 
-.status[data-status="connecting"] .dot {
-  background: var(--status-warning);
+.status[data-status="connecting"] {
+  color: var(--status-warning);
+  background: var(--status-warning-tint);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .status[data-status="connecting"] .dot {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }

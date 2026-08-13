@@ -1,44 +1,74 @@
 :root {
-  /* Page canvas */
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Page canvas — warm cream instead of stark white */
+  --background: oklch(97% 0.014 80);
+  --foreground: oklch(24% 0.03 280);
 
   /* App surfaces */
-  --surface-page: #fafafa;
-  --surface-card: #ffffff;
+  --surface-page: oklch(97% 0.014 80);
+  --surface-card: oklch(99% 0.005 90);
 
   /* Text */
-  --text-primary: #000000;
-  --text-secondary: #666666;
+  --text-primary: oklch(24% 0.03 280);
+  --text-secondary: oklch(46% 0.02 280);
 
   /* Borders & interactive states */
-  --border-color: #ebebeb;
-  --button-primary-hover: #383838;
-  --button-secondary-hover: #f2f2f2;
-  --button-primary-text: var(--surface-card);
+  --border-color: oklch(90% 0.02 80);
+  --button-secondary-hover: oklch(93% 0.035 45);
 
-  /* Status colors (same across themes for consistent meaning) */
-  --status-success: #2ecc71;
-  --status-warning: #f1c40f;
-  --status-danger: #e74c3c;
-  --status-neutral: #999999;
-  --status-attention: #e67e22;
+  /* Brand — coral (primary / X) and teal (secondary / O). Ink tones sit directly on a
+     surface and are tuned per theme; the solid tone is a fixed button fill (always paired
+     with --button-primary-text) since a filled rectangle doesn't need to invert with theme. */
+  --color-primary: oklch(58% 0.19 33);
+  --color-primary-solid: oklch(55% 0.19 33);
+  --color-primary-solid-hover: oklch(48% 0.19 33);
+  --color-secondary: oklch(55% 0.13 195);
+  --button-primary-text: oklch(99% 0 0);
+
+  /* Status colors — tuned per theme for contrast (see /impeccable audit finding) */
+  --status-success: oklch(48% 0.14 145);
+  --status-warning: oklch(52% 0.13 85);
+  --status-danger: oklch(50% 0.19 25);
+  --status-neutral: oklch(46% 0.02 280);
+  --status-attention: oklch(55% 0.17 50);
+
+  /* Soft tint backgrounds for status/brand badges */
+  --status-success-tint: oklch(93% 0.045 145);
+  --status-warning-tint: oklch(93% 0.04 85);
+  --status-danger-tint: oklch(93% 0.05 25);
+  --status-neutral-tint: oklch(93% 0.01 280);
+  --color-primary-tint: oklch(93% 0.035 33);
+  --color-secondary-tint: oklch(91% 0.035 195);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: oklch(20% 0.02 280);
+    --foreground: oklch(93% 0.01 280);
 
-    --surface-page: #0a0a0a;
-    --surface-card: #1a1a1a;
+    --surface-page: oklch(20% 0.02 280);
+    --surface-card: oklch(26% 0.02 280);
 
-    --text-primary: #ededed;
-    --text-secondary: #999999;
+    --text-primary: oklch(93% 0.01 280);
+    --text-secondary: oklch(72% 0.015 280);
 
-    --border-color: #2e2e2e;
-    --button-primary-hover: #cccccc;
-    --button-secondary-hover: #262626;
+    --border-color: oklch(34% 0.02 280);
+    --button-secondary-hover: oklch(32% 0.04 40);
+
+    --color-primary: oklch(72% 0.17 33);
+    --color-secondary: oklch(75% 0.12 195);
+
+    --status-success: oklch(75% 0.16 145);
+    --status-warning: oklch(78% 0.15 85);
+    --status-danger: oklch(68% 0.18 25);
+    --status-neutral: oklch(75% 0.01 280);
+    --status-attention: oklch(72% 0.17 50);
+
+    --status-success-tint: oklch(30% 0.06 145);
+    --status-warning-tint: oklch(32% 0.055 85);
+    --status-danger-tint: oklch(32% 0.07 25);
+    --status-neutral-tint: oklch(32% 0.015 280);
+    --color-primary-tint: oklch(32% 0.05 33);
+    --color-secondary-tint: oklch(30% 0.045 195);
   }
 }
 
@@ -58,7 +88,7 @@ body {
   flex-direction: column;
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -72,6 +102,13 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display), var(--font-geist-sans), system-ui, sans-serif;
+  font-weight: 700;
 }
 
 @media (prefers-color-scheme: dark) {
