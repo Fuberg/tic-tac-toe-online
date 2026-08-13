@@ -62,8 +62,14 @@ export function Match({ snapshot }: { snapshot: MatchSnapshot }) {
   const isMyTurn =
     localMark != null && snapshot.match.status === "in-progress" && snapshot.match.currentPlayer === localMark;
 
-  function handleCellClick(cell: Cell) {
+  // Issue #10: blur the cell up front instead of leaving it focused. Otherwise the
+  // match:update snapshot that follows sets disabled={true} on this same button, and per
+  // the HTML "unfocus steps" the browser force-removes focus from a disabled element —
+  // animated by .cell's transition, which reads as the board visibly jumping. See #9 for
+  // the full diagnosis.
+  function handleCellClick(cell: Cell, event: React.MouseEvent<HTMLButtonElement>) {
     if (!isMyTurn || snapshot.match.board[cell] != null) return;
+    event.currentTarget.blur();
     setError(null);
     socket.emit("match:place", { matchId: snapshot.id, cell }, (result: AckResult) => {
       if (!result.ok) setError("Не удалось сделать ход, попробуйте ещё раз");
@@ -152,7 +158,7 @@ export function Match({ snapshot }: { snapshot: MatchSnapshot }) {
               data-mark={mark}
               data-winning={isWinningCell || undefined}
               data-just-vanished={justVanished || undefined}
-              onClick={() => handleCellClick(cell)}
+              onClick={(event) => handleCellClick(cell, event)}
               disabled={!isMyTurn || mark != null}
               aria-label={`Клетка ${cell + 1}`}
             >
