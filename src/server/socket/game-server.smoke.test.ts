@@ -110,6 +110,50 @@ describe("game-server — socket.io smoke test", () => {
     }
   }, 10_000);
 
+  // Regression test: every handler must dispatch() unconditionally even when a caller omits
+  // the ack callback (a valid, intentional style — match.tsx's cell clicks used to be
+  // fire-and-forget like this, which is exactly how this bug was found). The tempting inline
+  // shape `ack?.(ackFromEvents(dispatch(...)))` looks equivalent but isn't: optional-call
+  // syntax skips evaluating its arguments too, so when `ack` is undefined that form never
+  // calls dispatch() and silently drops the action — this test fails loudly if that regresses.
+  it("applies a placed mark even when the client emits match:place with no ack callback", async () => {
+    const socket = await connect();
+    try {
+      await new Promise((resolve) => socket.emit("lobby:join", { nickname: "Eve" }, resolve));
+      const started = await new Promise<{
+        id: string;
+        match: { seatA: string; currentPlayer: string; board: unknown[] };
+      }>((resolve) => {
+        socket.once("match:update", resolve);
+        socket.emit("bot:start", { difficulty: "easy" }, () => {});
+      });
+
+      const humanMark = started.match.seatA;
+      const myTurnSnapshot =
+        started.match.currentPlayer === humanMark
+          ? started
+          : await new Promise<{ id: string; match: { currentPlayer: string; board: unknown[] } }>((resolve) => {
+              socket.on("match:update", function onUpdate(snapshot) {
+                if (snapshot?.match.currentPlayer === humanMark) {
+                  socket.off("match:update", onUpdate);
+                  resolve(snapshot);
+                }
+              });
+            });
+
+      const cell = myTurnSnapshot.match.board.findIndex((c) => c == null);
+      const nextUpdate = new Promise<{ match: { board: unknown[] } }>((resolve) =>
+        socket.once("match:update", resolve),
+      );
+      socket.emit("match:place", { matchId: myTurnSnapshot.id, cell }); // no ack — see comment above
+
+      const updated = await nextUpdate;
+      expect(updated.match.board[cell]).toBe(humanMark);
+    } finally {
+      socket.disconnect();
+    }
+  }, 10_000);
+
   // Issue #5: a bot opponent's rematch agreement is instant — the human's single
   // match:requestRematch must produce an in-progress rematch straight away, not a wait.
   it("instantly starts a rematch with swapped sides when the opponent is a bot", async () => {

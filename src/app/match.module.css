@@ -22,6 +22,11 @@
   color: var(--text-secondary);
 }
 
+.markCount {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 .board {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -51,6 +56,21 @@
 .cell[data-winning] {
   border-color: #2ecc71;
   color: #2ecc71;
+}
+
+.cell[data-just-vanished] {
+  border-color: #e67e22;
+  border-style: dashed;
+  animation: vanish-flash 1s ease-out;
+}
+
+@keyframes vanish-flash {
+  from {
+    background: rgba(230, 126, 34, 0.35);
+  }
+  to {
+    background: transparent;
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {

@@ -23,6 +23,15 @@ const DEFAULT_BOT_MOVE_DELAY_MS = 500;
 
 type AckResult = { ok: true } | { ok: false; reason: string };
 
+// Every socket.on handler below must call dispatch() unconditionally and *then* pass its
+// result to `ack?.(...)` — never `ack?.(ackFromEvents(dispatch(...)))` inline. Optional-call
+// syntax short-circuits its arguments too: when a caller omits the ack callback (a valid,
+// intentional fire-and-forget emit — a past version of match.tsx's cell clicks did exactly
+// this), `ack` is undefined and `dispatch(...)` is never evaluated at all, silently dropping
+// the action. `ackDispatch` below (defined next to `dispatch`) is the one choke point that
+// gets this right — handlers that don't need the raw events list should route through it
+// rather than repeating the unsafe inline shape.
+
 // The only two LobbyEvent variants that represent "the request was denied" rather than
 // "something happened" — everything else is treated as a success ack.
 function ackFromEvents(events: LobbyEvent[]): AckResult {
@@ -94,6 +103,13 @@ export function attachGameServer(
     state = result.state;
     routeEvents(result.events);
     return result.events;
+  }
+
+  // The one choke point every handler below routes through instead of repeating
+  // `ack?.(ackFromEvents(dispatch(action)))` inline — see the comment on that hazard above.
+  function ackDispatch(action: LobbyAction, ack?: (r: AckResult) => void) {
+    const events = dispatch(action);
+    ack?.(ackFromEvents(events));
   }
 
   function routeEvents(events: LobbyEvent[]) {
@@ -221,11 +237,11 @@ export function attachGameServer(
     socket.on("lobby:join", (payload: { nickname?: unknown }, ack?: (r: AckResult) => void) => {
       const nickname = typeof payload?.nickname === "string" ? payload.nickname.trim().slice(0, 32) : "";
       if (!nickname) return ack?.({ ok: false, reason: "invalid-nickname" });
-      ack?.(ackFromEvents(dispatch({ type: "JOIN_LOBBY", playerId, nickname })));
+      ackDispatch({ type: "JOIN_LOBBY", playerId, nickname }, ack);
     });
 
     socket.on("lobby:leave", (_payload: unknown, ack?: (r: AckResult) => void) => {
-      ack?.(ackFromEvents(dispatch({ type: "LEAVE_LOBBY", playerId })));
+      ackDispatch({ type: "LEAVE_LOBBY", playerId }, ack);
     });
 
     // The client sends this on document visibilitychange — a hidden (not closed) tab starts
@@ -249,11 +265,7 @@ export function attachGameServer(
       "challenge:send",
       (payload: { toPlayerId?: unknown }, ack?: (r: AckResult) => void) => {
         const toPlayerId = typeof payload?.toPlayerId === "string" ? payload.toPlayerId : "";
-        ack?.(
-          ackFromEvents(
-            dispatch({ type: "SEND_CHALLENGE", challengeId: randomUUID(), fromPlayerId: playerId, toPlayerId }),
-          ),
-        );
+        ackDispatch({ type: "SEND_CHALLENGE", challengeId: randomUUID(), fromPlayerId: playerId, toPlayerId }, ack);
       },
     );
 
@@ -261,11 +273,7 @@ export function attachGameServer(
       "challenge:accept",
       (payload: { challengeId?: unknown }, ack?: (r: AckResult) => void) => {
         const challengeId = typeof payload?.challengeId === "string" ? payload.challengeId : "";
-        ack?.(
-          ackFromEvents(
-            dispatch({ type: "ACCEPT_CHALLENGE", challengeId, matchId: randomUUID(), playerId }),
-          ),
-        );
+        ackDispatch({ type: "ACCEPT_CHALLENGE", challengeId, matchId: randomUUID(), playerId }, ack);
       },
     );
 
@@ -273,7 +281,7 @@ export function attachGameServer(
       "challenge:decline",
       (payload: { challengeId?: unknown }, ack?: (r: AckResult) => void) => {
         const challengeId = typeof payload?.challengeId === "string" ? payload.challengeId : "";
-        ack?.(ackFromEvents(dispatch({ type: "DECLINE_CHALLENGE", challengeId, playerId })));
+        ackDispatch({ type: "DECLINE_CHALLENGE", challengeId, playerId }, ack);
       },
     );
 
@@ -282,11 +290,7 @@ export function attachGameServer(
       (payload: { difficulty?: unknown }, ack?: (r: AckResult) => void) => {
         const difficulty = payload?.difficulty as BotDifficulty;
         if (!BOT_DIFFICULTIES.includes(difficulty)) return ack?.({ ok: false, reason: "invalid-difficulty" });
-        ack?.(
-          ackFromEvents(
-            dispatch({ type: "START_BOT_MATCH", matchId: randomUUID(), playerId, difficulty }),
-          ),
-        );
+        ackDispatch({ type: "START_BOT_MATCH", matchId: randomUUID(), playerId, difficulty }, ack);
       },
     );
 
@@ -298,7 +302,7 @@ export function attachGameServer(
         if (typeof cell !== "number" || !Number.isInteger(cell) || cell < 0 || cell > 8) {
           return ack?.({ ok: false, reason: "invalid-cell" });
         }
-        ack?.(ackFromEvents(dispatch({ type: "PLACE", matchId, playerId, cell: cell as Cell })));
+        ackDispatch({ type: "PLACE", matchId, playerId, cell: cell as Cell }, ack);
       },
     );
 
@@ -306,7 +310,7 @@ export function attachGameServer(
       "match:requestRematch",
       (payload: { matchId?: unknown }, ack?: (r: AckResult) => void) => {
         const matchId = typeof payload?.matchId === "string" ? payload.matchId : "";
-        ack?.(ackFromEvents(dispatch({ type: "REQUEST_REMATCH", matchId, playerId })));
+        ackDispatch({ type: "REQUEST_REMATCH", matchId, playerId }, ack);
       },
     );
 

@@ -22,12 +22,14 @@ type ParticipantRef = { type: "player"; playerId: string } | { type: "bot"; diff
 
 interface MatchState {
   board: (Mark | null)[];
+  marks: Record<Mark, Cell[]>;
   currentPlayer: Mark;
   seatA: Mark;
   seatB: Mark;
   status: MatchStatus;
   winner: Mark | null;
   winningLine: Cell[] | null;
+  lastRemovedCell: Cell | null;
 }
 
 export interface MatchSnapshot {
@@ -62,7 +64,10 @@ export function Match({ snapshot }: { snapshot: MatchSnapshot }) {
 
   function handleCellClick(cell: Cell) {
     if (!isMyTurn || snapshot.match.board[cell] != null) return;
-    socket.emit("match:place", { matchId: snapshot.id, cell });
+    setError(null);
+    socket.emit("match:place", { matchId: snapshot.id, cell }, (result: AckResult) => {
+      if (!result.ok) setError("Не удалось сделать ход, попробуйте ещё раз");
+    });
   }
 
   function handleRequestRematch() {
@@ -107,6 +112,11 @@ export function Match({ snapshot }: { snapshot: MatchSnapshot }) {
     statusText = isMyTurn ? "Ваш ход" : "Ход соперника";
   }
 
+  // Issue #1 user story: "сколько у меня фишек на поле, чтобы планировать следующий ход" —
+  // with at most 3 marks per side, knowing the count tells you whether your next placement
+  // will vanish your oldest one.
+  const myMarkCount = localMark ? snapshot.match.marks[localMark].length : null;
+
   // CONTEXT.md Match end/Rematch: rematch is only offered after a normal win, never after a
   // timeout/disconnect forfeit; while a request is pending, the requester waits and the other
   // seat sees an "accept" affordance instead of a fresh request.
@@ -124,11 +134,16 @@ export function Match({ snapshot }: { snapshot: MatchSnapshot }) {
       <div className={styles.header}>
         <h2>Матч против: {opponentLabel(opponent)}</h2>
         <p className={styles.status}>{statusText}</p>
+        {myMarkCount != null && <p className={styles.markCount}>Ваших фишек на поле: {myMarkCount}/3</p>}
       </div>
       <div className={styles.board}>
         {snapshot.match.board.map((mark, index) => {
           const cell = index as Cell;
           const isWinningCell = snapshot.match.winningLine?.includes(cell) ?? false;
+          // Issue #1 user story: "ясно видеть момент, когда моя фишка только что исчезла" —
+          // lastRemovedCell is the cell PLACE just vacated (null once a later move doesn't
+          // remove anything), so this only ever marks the most recent vanish, never a stale one.
+          const justVanished = snapshot.match.lastRemovedCell === cell;
           return (
             <button
               key={cell}
@@ -136,6 +151,7 @@ export function Match({ snapshot }: { snapshot: MatchSnapshot }) {
               className={styles.cell}
               data-mark={mark}
               data-winning={isWinningCell || undefined}
+              data-just-vanished={justVanished || undefined}
               onClick={() => handleCellClick(cell)}
               disabled={!isMyTurn || mark != null}
               aria-label={`Клетка ${cell + 1}`}
