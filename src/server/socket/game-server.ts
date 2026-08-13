@@ -77,10 +77,11 @@ function buildMatchSnapshot(state: LobbyState, matchId: string) {
 
 export function attachGameServer(
   io: Server,
-  options?: { botMoveDelayMs?: number; lobbyTimeoutMs?: number },
+  options?: { botMoveDelayMs?: number; lobbyTimeoutMs?: number; matchTimeoutMs?: number },
 ) {
   const botMoveDelayMs = options?.botMoveDelayMs ?? DEFAULT_BOT_MOVE_DELAY_MS;
   const lobbyTimeoutMs = options?.lobbyTimeoutMs ?? LOBBY_TIMEOUT_MS;
+  const matchTimeoutMs = options?.matchTimeoutMs ?? MATCH_TIMEOUT_MS;
   let state: LobbyState = createEmptyLobbyState();
 
   const playerSockets = new Map<string, Socket>();
@@ -335,7 +336,7 @@ export function attachGameServer(
           setTimeout(() => {
             matchTimeoutTimers.delete(playerId);
             dispatch({ type: "FORFEIT", matchId, playerId });
-          }, MATCH_TIMEOUT_MS),
+          }, matchTimeoutMs),
         );
       } else if (state.players[playerId]) {
         dispatch({ type: "LEAVE_LOBBY", playerId });

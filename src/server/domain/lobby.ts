@@ -338,7 +338,12 @@ function requestRematch(state: LobbyState, matchId: string, playerId: string): L
   if (!seat) return rejected(state, "not-a-participant");
   if (entry.rematchRequestedBy === seat) return rejected(state, "already-requested");
 
-  if (entry.rematchRequestedBy === null) {
+  // Issue #5: "для бота согласие происходит мгновенно" — a bot opponent never sends its own
+  // REQUEST_REMATCH, so waiting on entry.rematchRequestedBy from it would hang forever.
+  const otherSeat: SeatKey = seat === "seatA" ? "seatB" : "seatA";
+  const opponentIsBot = participantOfSeat(entry, otherSeat).type === "bot";
+
+  if (entry.rematchRequestedBy === null && !opponentIsBot) {
     const nextEntry: MatchEntry = { ...entry, rematchRequestedBy: seat };
     return {
       state: { ...state, matches: { ...state.matches, [matchId]: nextEntry } },
@@ -346,7 +351,8 @@ function requestRematch(state: LobbyState, matchId: string, playerId: string): L
     };
   }
 
-  // Other seat already asked — both agreed, start the swapped-seats rematch.
+  // Other seat already asked (or is a bot that agrees instantly) — both agreed, start the
+  // swapped-seats rematch.
   const { state: rematched } = reduceMatch(entry.match, { type: "REMATCH" });
   const nextEntry: MatchEntry = { ...entry, match: rematched, rematchRequestedBy: null };
   return {

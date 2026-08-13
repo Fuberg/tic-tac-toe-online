@@ -58,3 +58,47 @@
     background: var(--button-secondary-hover);
   }
 }
+
+.error {
+  color: #e74c3c;
+  font-size: 14px;
+}
+
+.resultActions {
+  display: flex;
+  gap: 12px;
+}
+
+.resultActions button {
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 128px;
+  border: 1px solid transparent;
+  background: var(--text-primary);
+  color: var(--background);
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.resultActions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.resultActions .leaveButton {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: var(--button-secondary-border);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .resultActions button:not(:disabled):hover {
+    background: var(--button-primary-hover);
+  }
+
+  .resultActions .leaveButton:not(:disabled):hover {
+    background: var(--button-secondary-hover);
+  }
+}

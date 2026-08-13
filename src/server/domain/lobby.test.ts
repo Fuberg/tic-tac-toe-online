@@ -335,6 +335,44 @@ describe("lobby — forfeit, rematch, and leaving the result screen", () => {
     expect(afterSecondRequest.matches.m1.seatA).toEqual({ type: "player", playerId: "p1" });
   });
 
+  // Issue #5: "для бота согласие происходит мгновенно" — a bot never sends its own
+  // REQUEST_REMATCH, so the rematch must complete on the human's single request.
+  it("a bot opponent agrees to a rematch instantly, with no REMATCH_REQUESTED wait", () => {
+    let state = createEmptyLobbyState();
+    ({ state } = join(state, "p1", "Alice"));
+    ({ state } = handleAction(
+      state,
+      { type: "START_BOT_MATCH", matchId: "m1", playerId: "p1", difficulty: "easy" },
+      NOW,
+      rngAlwaysA, // p1 = seatA = "X", moves first
+    ));
+
+    let guard = 0;
+    while (state.matches.m1.match.status === "in-progress" && guard++ < 30) {
+      if (state.matches.m1.match.currentPlayer === "X") {
+        const board = state.matches.m1.match.board;
+        const cell = board.findIndex((c) => c == null);
+        ({ state } = handleAction(state, { type: "PLACE", matchId: "m1", playerId: "p1", cell: cell as never }, NOW));
+      } else {
+        ({ state } = handleAction(state, { type: "REQUEST_BOT_MOVE", matchId: "m1" }, NOW, () => 0.42));
+      }
+    }
+    expect(state.matches.m1.match.status).toBe("won");
+    const seatABefore = state.matches.m1.match.seatA;
+
+    const { state: after, events } = handleAction(
+      state,
+      { type: "REQUEST_REMATCH", matchId: "m1", playerId: "p1" },
+      NOW,
+    );
+
+    expect(events.some((e) => e.type === "REMATCH_REQUESTED")).toBe(false);
+    expect(events.some((e) => e.type === "MATCH_STARTED")).toBe(true);
+    expect(after.matches.m1.rematchRequestedBy).toBeNull();
+    expect(after.matches.m1.match.status).toBe("in-progress");
+    expect(after.matches.m1.match.seatA).toBe(seatABefore === "X" ? "O" : "X");
+  });
+
   // CONTEXT.md Rematch section: "Если партнёр вместо реванша нажимает «Выйти в лобби» —
   // обоих (включая ожидавшего) возвращает в лобби, реванш не создаётся."
   it("if one player leaves instead of accepting a pending rematch request, both return to lobby", () => {
