@@ -39,7 +39,7 @@
   font-weight: 500;
   font-size: 14px;
   cursor: pointer;
-  transition: 0.2s;
+  transition: background-color 0.2s, opacity 0.2s;
 }
 
 .joinForm button:disabled {
@@ -146,7 +146,7 @@
   font-weight: 500;
   font-size: 13px;
   cursor: pointer;
-  transition: 0.2s;
+  transition: background-color 0.2s, opacity 0.2s;
 }
 
 .challengeButton:disabled {
@@ -199,7 +199,7 @@
   font-weight: 500;
   font-size: 14px;
   cursor: pointer;
-  transition: 0.2s;
+  transition: background-color 0.2s;
 }
 
 .challengeActions .declineButton {
@@ -249,7 +249,7 @@
   font-weight: 500;
   font-size: 14px;
   cursor: pointer;
-  transition: 0.2s;
+  transition: background-color 0.2s, opacity 0.2s;
 }
 
 .botList button:disabled {

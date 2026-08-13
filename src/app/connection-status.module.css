@@ -1,13 +1,13 @@
 .status {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.95rem;
+  gap: 8px;
+  font-size: 15px;
 }
 
 .dot {
-  width: 0.6rem;
-  height: 0.6rem;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--status-neutral);
 }
