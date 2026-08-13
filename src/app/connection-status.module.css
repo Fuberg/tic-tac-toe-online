@@ -1,0 +1,25 @@
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: #999;
+}
+
+.status[data-status="connected"] .dot {
+  background: #2ecc71;
+}
+
+.status[data-status="disconnected"] .dot {
+  background: #e74c3c;
+}
+
+.status[data-status="connecting"] .dot {
+  background: #f1c40f;
+}
