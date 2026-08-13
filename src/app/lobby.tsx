@@ -12,18 +12,18 @@ import { DIFFICULTY_LABEL, type BotDifficulty } from "./bot-labels";
 import { useSocket } from "./socket-provider";
 import styles from "./lobby.module.css";
 
-interface LobbyPlayer {
+export interface LobbyPlayer {
   id: string;
   nickname: string;
   status: "available" | "busy" | "in-game" | null;
 }
 
-interface LobbyBot {
+export interface LobbyBot {
   id: string;
   difficulty: BotDifficulty;
 }
 
-interface LobbySnapshot {
+export interface LobbySnapshot {
   players: LobbyPlayer[];
   bots: LobbyBot[];
 }
@@ -57,14 +57,23 @@ const CHALLENGE_OUTCOME_LABEL: Partial<Record<ChallengeOutcome, string>> = {
   "target-left": "Игрок, которому вы отправили вызов, покинул лобби",
 };
 
-export function Lobby() {
+// Issue #8: `players`/`bots` come from Game, not from a subscription local to this component.
+// Game keeps its own lobby:update listener alive for the app's whole lifetime — including
+// while a Match is mounted and this component isn't — so it's the one place guaranteed to
+// have received the lobby:update the server sends the instant a match ends (the server still
+// considers a player a lobby member through a match; leaving a match isn't leaving the lobby).
+// A listener/local-state pair scoped to this component would either miss that broadcast
+// entirely (not mounted yet when it arrives) or, if seeded once from an "initial" snapshot at
+// mount, freeze on a stale copy forever if no later lobby event happens to correct it — both
+// tried and both failed manual testing. Deriving `joined` from `players` on every render (never
+// storing it as separate local state) sidesteps that: it's never stale by more than a render.
+export function Lobby({ snapshot }: { snapshot: LobbySnapshot }) {
   const { socket, status: connectionStatus } = useSocket();
-  const [joined, setJoined] = useState(false);
+  const { players, bots } = snapshot;
+  const joined = players.some((p) => p.id === socket.id);
   const [joining, setJoining] = useState(false);
   const [nickname, setNickname] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [players, setPlayers] = useState<LobbyPlayer[]>([]);
-  const [bots, setBots] = useState<LobbyBot[]>([]);
   const [startingBot, setStartingBot] = useState<BotDifficulty | null>(null);
   const [pendingChallenge, setPendingChallenge] = useState<PendingChallenge | null>(null);
   const [challengeNotice, setChallengeNotice] = useState<string | null>(null);
@@ -79,23 +88,17 @@ export function Lobby() {
   }
 
   useEffect(() => {
-    const handleLobbyUpdate = (snapshot: LobbySnapshot) => {
-      setPlayers(snapshot.players);
-      setBots(snapshot.bots);
-    };
-    // The server broadcasts this before a graceful shutdown/deploy and drops every connection
-    // right after — reflect that by returning to the nickname screen instead of showing a
-    // lobby that's about to silently stop updating.
+    // The server broadcasts server:shutdown before a graceful shutdown/deploy and drops every
+    // connection right after. Game reacts to the same event by clearing its lobby snapshot
+    // (flipping `joined` above to false via the empty `players` prop) — this handler only owns
+    // the presentational side: showing why the nickname screen reappeared.
     const handleShutdown = () => {
-      setJoined(false);
       setError("Сервер обновляется — попробуйте зайти снова через минуту.");
       clearChallengeUI();
     };
 
-    socket.on("lobby:update", handleLobbyUpdate);
     socket.on("server:shutdown", handleShutdown);
     return () => {
-      socket.off("lobby:update", handleLobbyUpdate);
       socket.off("server:shutdown", handleShutdown);
     };
   }, [socket]);
@@ -158,20 +161,12 @@ export function Lobby() {
     setError(null);
     socket.emit("lobby:join", { nickname: trimmed }, (result: AckResult) => {
       setJoining(false);
-      if (result.ok) {
-        setJoined(true);
-      } else {
-        setError("Не удалось войти в лобби, попробуйте другой никнейм");
-      }
+      if (!result.ok) setError("Не удалось войти в лобби, попробуйте другой никнейм");
     });
   }
 
   function handleLeave() {
-    socket.emit("lobby:leave", {}, () => {
-      setJoined(false);
-      setPlayers([]);
-      clearChallengeUI();
-    });
+    socket.emit("lobby:leave", {}, () => clearChallengeUI());
   }
 
   function handleSendChallenge(toPlayerId: string) {
