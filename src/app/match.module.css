@@ -42,7 +42,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  border: 1px solid var(--button-secondary-border);
+  border: 1px solid var(--border-color);
   background: transparent;
   color: var(--text-primary);
   font-size: 32px;
@@ -56,12 +56,12 @@
 }
 
 .cell[data-winning] {
-  border-color: #2ecc71;
-  color: #2ecc71;
+  border-color: var(--status-success);
+  color: var(--status-success);
 }
 
 .cell[data-just-vanished] {
-  border-color: #e67e22;
+  border-color: var(--status-attention);
   border-style: dashed;
 }
 
@@ -73,7 +73,7 @@
 
 @keyframes vanish-flash {
   from {
-    background: rgba(230, 126, 34, 0.35);
+    background: color-mix(in srgb, var(--status-attention) 35%, transparent);
   }
   to {
     background: transparent;
@@ -87,7 +87,7 @@
 }
 
 .error {
-  color: #e74c3c;
+  color: var(--status-danger);
   font-size: 14px;
 }
 
@@ -102,7 +102,7 @@
   border-radius: 128px;
   border: 1px solid transparent;
   background: var(--text-primary);
-  color: var(--background);
+  color: var(--button-primary-text);
   font-weight: 500;
   font-size: 14px;
   cursor: pointer;
@@ -117,7 +117,7 @@
 .resultActions .leaveButton {
   background: transparent;
   color: var(--text-primary);
-  border-color: var(--button-secondary-border);
+  border-color: var(--border-color);
 }
 
 @media (hover: hover) and (pointer: fine) {

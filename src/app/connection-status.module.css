@@ -9,17 +9,17 @@
   width: 0.6rem;
   height: 0.6rem;
   border-radius: 50%;
-  background: #999;
+  background: var(--status-neutral);
 }
 
 .status[data-status="connected"] .dot {
-  background: #2ecc71;
+  background: var(--status-success);
 }
 
 .status[data-status="disconnected"] .dot {
-  background: #e74c3c;
+  background: var(--status-danger);
 }
 
 .status[data-status="connecting"] .dot {
-  background: #f1c40f;
+  background: var(--status-warning);
 }

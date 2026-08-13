@@ -1,12 +1,44 @@
 :root {
+  /* Page canvas */
   --background: #ffffff;
   --foreground: #171717;
+
+  /* App surfaces */
+  --surface-page: #fafafa;
+  --surface-card: #ffffff;
+
+  /* Text */
+  --text-primary: #000000;
+  --text-secondary: #666666;
+
+  /* Borders & interactive states */
+  --border-color: #ebebeb;
+  --button-primary-hover: #383838;
+  --button-secondary-hover: #f2f2f2;
+  --button-primary-text: var(--surface-card);
+
+  /* Status colors (same across themes for consistent meaning) */
+  --status-success: #2ecc71;
+  --status-warning: #f1c40f;
+  --status-danger: #e74c3c;
+  --status-neutral: #999999;
+  --status-attention: #e67e22;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --surface-page: #0a0a0a;
+    --surface-card: #1a1a1a;
+
+    --text-primary: #ededed;
+    --text-secondary: #999999;
+
+    --border-color: #2e2e2e;
+    --button-primary-hover: #cccccc;
+    --button-secondary-hover: #262626;
   }
 }
 

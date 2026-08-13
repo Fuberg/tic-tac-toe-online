@@ -1,14 +1,4 @@
 .page {
-  --background: #fafafa;
-  --foreground: #fff;
-
-  --text-primary: #000;
-  --text-secondary: #666;
-
-  --button-primary-hover: #383838;
-  --button-secondary-hover: #f2f2f2;
-  --button-secondary-border: #ebebeb;
-
   display: flex;
   flex: 1;
   min-height: 100vh;
@@ -16,7 +6,7 @@
   align-items: center;
   justify-content: center;
   font-family: var(--font-geist-sans);
-  background-color: var(--background);
+  background-color: var(--surface-page);
 }
 
 .main {
@@ -25,7 +15,7 @@
   gap: 32px;
   width: 100%;
   max-width: 480px;
-  background-color: var(--foreground);
+  background-color: var(--surface-card);
   padding: 60px;
 }
 
@@ -51,19 +41,5 @@
 
   .top h1 {
     font-size: 22px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  .page {
-    --background: #000;
-    --foreground: #000;
-
-    --text-primary: #ededed;
-    --text-secondary: #999;
-
-    --button-primary-hover: #ccc;
-    --button-secondary-hover: #1a1a1a;
-    --button-secondary-border: #1a1a1a;
   }
 }
