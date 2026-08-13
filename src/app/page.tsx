@@ -1,5 +1,5 @@
 import { ConnectionStatus } from "./connection-status";
-import { Lobby } from "./lobby";
+import { Game } from "./game";
 import { SocketProvider } from "./socket-provider";
 import styles from "./page.module.css";
 
@@ -12,7 +12,7 @@ export default function Home() {
             <h1>Tic-Tac-Toe Online</h1>
             <ConnectionStatus />
           </div>
-          <Lobby />
+          <Game />
         </main>
       </div>
     </SocketProvider>

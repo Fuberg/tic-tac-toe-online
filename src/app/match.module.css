@@ -1,0 +1,60 @@
+.match {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.status {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+  aspect-ratio: 1;
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--button-secondary-border);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 32px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.cell:disabled {
+  cursor: not-allowed;
+}
+
+.cell[data-winning] {
+  border-color: #2ecc71;
+  color: #2ecc71;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cell:not(:disabled):hover {
+    background: var(--button-secondary-hover);
+  }
+}

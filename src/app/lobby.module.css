@@ -129,3 +129,48 @@
   font-size: 14px;
   padding: 10px 14px;
 }
+
+.bots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bots h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.botList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.botList button {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 128px;
+  border: 1px solid var(--button-secondary-border);
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.botList button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .botList button:not(:disabled):hover {
+    background: var(--button-secondary-hover);
+  }
+}

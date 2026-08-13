@@ -1,10 +1,12 @@
 // Issue #3: nickname entry -> lobby with a live online-players list -> explicit leave.
-// All the actual join/leave/lobby-timeout logic lives in the domain reducer
+// Issue #4: also lists the fixed set of bots and starts a Match against one on click.
+// All the actual join/leave/lobby-timeout/match-start logic lives in the domain reducer
 // (src/server/domain/lobby.ts) behind the socket events used here — this component is a thin
-// view over lobby:join / lobby:leave / lobby:update / lobby:visibility.
+// view over lobby:join / lobby:leave / lobby:update / lobby:visibility / bot:start.
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { DIFFICULTY_LABEL, type BotDifficulty } from "./bot-labels";
 import { useSocket } from "./socket-provider";
 import styles from "./lobby.module.css";
 
@@ -14,8 +16,14 @@ interface LobbyPlayer {
   status: "available" | "busy" | "in-game" | null;
 }
 
+interface LobbyBot {
+  id: string;
+  difficulty: BotDifficulty;
+}
+
 interface LobbySnapshot {
   players: LobbyPlayer[];
+  bots: LobbyBot[];
 }
 
 type AckResult = { ok: true } | { ok: false; reason: string };
@@ -33,9 +41,14 @@ export function Lobby() {
   const [nickname, setNickname] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [players, setPlayers] = useState<LobbyPlayer[]>([]);
+  const [bots, setBots] = useState<LobbyBot[]>([]);
+  const [startingBot, setStartingBot] = useState<BotDifficulty | null>(null);
 
   useEffect(() => {
-    const handleLobbyUpdate = (snapshot: LobbySnapshot) => setPlayers(snapshot.players);
+    const handleLobbyUpdate = (snapshot: LobbySnapshot) => {
+      setPlayers(snapshot.players);
+      setBots(snapshot.bots);
+    };
     // The server broadcasts this before a graceful shutdown/deploy and drops every connection
     // right after — reflect that by returning to the nickname screen instead of showing a
     // lobby that's about to silently stop updating.
@@ -91,6 +104,18 @@ export function Lobby() {
     });
   }
 
+  // Issue #4: clicking a bot starts a Match immediately, no Challenge step. The lobby view
+  // doesn't need to react to success itself — Game switches to the board once match:update
+  // arrives on the shared socket.
+  function handleStartBot(difficulty: BotDifficulty) {
+    setStartingBot(difficulty);
+    setError(null);
+    socket.emit("bot:start", { difficulty }, (result: AckResult) => {
+      setStartingBot(null);
+      if (!result.ok) setError("Не удалось начать матч с ботом, попробуйте ещё раз");
+    });
+  }
+
   if (!joined) {
     return (
       <form className={styles.joinForm} onSubmit={handleJoin}>
@@ -141,6 +166,22 @@ export function Lobby() {
           <li className={styles.empty}>Больше в лобби никого нет</li>
         )}
       </ul>
+      <div className={styles.bots}>
+        <h3>Играть с ботом</h3>
+        <ul className={styles.botList}>
+          {bots.map((bot) => (
+            <li key={bot.id}>
+              <button
+                type="button"
+                onClick={() => handleStartBot(bot.difficulty)}
+                disabled={startingBot !== null}
+              >
+                {DIFFICULTY_LABEL[bot.difficulty]}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }
