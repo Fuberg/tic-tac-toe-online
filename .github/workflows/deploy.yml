@@ -33,6 +33,15 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.DEPLOY_SSH_HOST }}
+          username: ${{ vars.DEPLOY_SSH_USER }}
+          port: ${{ vars.DEPLOY_SSH_PORT }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: docker-compose.yml
+          target: /opt/tic-tac-toe-online
       - uses: appleboy/ssh-action@v1
         with:
           host: ${{ vars.DEPLOY_SSH_HOST }}
@@ -42,4 +51,4 @@ jobs:
           script: |
             cd /opt/tic-tac-toe-online
             sudo docker compose pull
-            sudo docker compose up -d
+            sudo docker compose up -d --remove-orphans
